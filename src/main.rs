@@ -3,6 +3,7 @@ use std::net::UdpSocket;
 
 struct DnsMessage {
     header: DnsHeader,
+    question: DnsQuestion,
 }
 
 struct DnsHeader {
@@ -14,6 +15,19 @@ struct DnsHeader {
     arcount: u16,
 }
 
+struct DnsQuestion {
+    name: Vec<u8>,
+    qtype: u16,
+    class: u16,
+}
+
+fn serialize_dns_message(message: DnsMessage) -> Vec<u8> {
+    let mut buffer: Vec<u8> = Vec::new();
+    buffer.extend(serialize_dns_header(&message.header));
+    buffer.extend(serialize_dns_question(&message.question));
+    buffer
+}
+
 fn serialize_dns_header(header: &DnsHeader) -> Vec<u8> {
     let mut buffer = Vec::new();
     buffer.extend(&header.id.to_be_bytes());
@@ -23,6 +37,25 @@ fn serialize_dns_header(header: &DnsHeader) -> Vec<u8> {
     buffer.extend(&header.nscount.to_be_bytes());
     buffer.extend(&header.arcount.to_be_bytes());
     buffer
+}
+
+fn serialize_dns_question(question: &DnsQuestion) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    buffer.extend(split_dns_name(&question.name));
+    buffer.extend(&question.qtype.to_be_bytes());
+    buffer.extend(&question.class.to_be_bytes());
+    buffer
+}
+
+fn split_dns_name(name: &Vec<u8>) -> Vec<u8> {
+    let mut result = Vec::new();
+    for part in name.split(|byte| *byte == b'.') {
+        let length = part.len() as u8;
+        result.push(length);
+        result.extend(part);
+    }
+    result.push(0);
+    result
 }
 
 fn main() {
@@ -39,14 +72,19 @@ fn main() {
                     header: DnsHeader {
                         id: 1234,
                         flags: 0x8000,
-                        qdcount: 0,
+                        qdcount: 1,
                         ancount: 0,
                         nscount: 0,
                         arcount: 0,
                     },
+                    question: DnsQuestion {
+                        name: b"codecrafters.io".to_vec(),
+                        qtype: 1,
+                        class: 1,
+                    },
                 };
 
-                let response = serialize_dns_header(&dns_msg.header);
+                let response = serialize_dns_message(dns_msg);
                 udp_socket
                     .send_to(&response, source)
                     .expect("Failed to send response");
