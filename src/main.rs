@@ -3,7 +3,8 @@ use std::net::UdpSocket;
 
 struct DnsMessage {
     header: DnsHeader,
-    question: DnsQuestion,
+    question: Vec<DnsQuestion>,
+    answers: Vec<DnsAnswer>,
 }
 
 struct DnsHeader {
@@ -21,10 +22,24 @@ struct DnsQuestion {
     class: u16,
 }
 
+struct DnsAnswer {
+    name: Vec<u8>,
+    atype: u16,
+    class: u16,
+    ttl: u32,
+    rdlength: u16,
+    rdata: [u8; 4],
+}
+
 fn serialize_dns_message(message: DnsMessage) -> Vec<u8> {
     let mut buffer: Vec<u8> = Vec::new();
     buffer.extend(serialize_dns_header(&message.header));
-    buffer.extend(serialize_dns_question(&message.question));
+    for question in message.question {
+        buffer.extend(serialize_dns_question(&question));
+    }
+    for answer in message.answers {
+        buffer.extend(serialize_dns_answer(&answer));
+    }
     buffer
 }
 
@@ -47,6 +62,17 @@ fn serialize_dns_question(question: &DnsQuestion) -> Vec<u8> {
     buffer
 }
 
+fn serialize_dns_answer(answer: &DnsAnswer) -> Vec<u8> {
+    let mut buffer = Vec::new();
+    buffer.extend(split_dns_name(&answer.name));
+    buffer.extend(&answer.atype.to_be_bytes());
+    buffer.extend(&answer.class.to_be_bytes());
+    buffer.extend(&answer.ttl.to_be_bytes());
+    buffer.extend(&answer.rdlength.to_be_bytes());
+    buffer.extend(answer.rdata);
+    buffer
+}
+
 fn split_dns_name(name: &Vec<u8>) -> Vec<u8> {
     let mut result = Vec::new();
     for part in name.split(|byte| *byte == b'.') {
@@ -56,6 +82,12 @@ fn split_dns_name(name: &Vec<u8>) -> Vec<u8> {
     }
     result.push(0);
     result
+}
+
+fn encode_ip_address(ip: &str) -> [u8; 4] {
+    ip.parse::<std::net::Ipv4Addr>()
+        .expect("Invalid IPv4 address")
+        .octets()
 }
 
 fn main() {
@@ -73,15 +105,23 @@ fn main() {
                         id: 1234,
                         flags: 0x8000,
                         qdcount: 1,
-                        ancount: 0,
+                        ancount: 1,
                         nscount: 0,
                         arcount: 0,
                     },
-                    question: DnsQuestion {
+                    question: vec![DnsQuestion {
                         name: b"codecrafters.io".to_vec(),
                         qtype: 1,
                         class: 1,
-                    },
+                    }],
+                    answers: vec![DnsAnswer {
+                        name: b"codecrafters.io".to_vec(),
+                        atype: 1,
+                        class: 1,
+                        ttl: 3600,
+                        rdlength: 4,
+                        rdata: encode_ip_address("8.8.8.8"),
+                    }],
                 };
 
                 let response = serialize_dns_message(dns_msg);
