@@ -90,6 +90,43 @@ fn encode_ip_address(ip: &str) -> [u8; 4] {
         .octets()
 }
 
+fn parse_dns_message(data: &[u8]) -> DnsMessage {
+    let header = parse_dns_header(&data[0..12]);
+    DnsMessage {
+        header,
+        question: vec![DnsQuestion {
+            name: b"codecrafters.io".to_vec(),
+            qtype: 1,
+            class: 1,
+        }],
+        answers: vec![DnsAnswer {
+            name: b"codecrafters.io".to_vec(),
+            atype: 1,
+            class: 1,
+            ttl: 3600,
+            rdlength: 4,
+            rdata: encode_ip_address("8.8.8.8"),
+        }],
+    }
+}
+
+fn parse_dns_header(data: &[u8]) -> DnsHeader {
+    let id = u16::from_be_bytes([data[0], data[1]]);
+    let flags = u16::from_be_bytes([data[2], data[3]]);
+    let qdcount = 1;
+    let ancount = 1;
+    let nscount = 1;
+    let arcount = 1;
+
+    DnsHeader {
+        id,
+        flags: flags | 1 << 15 | 4,
+        qdcount,
+        ancount,
+        nscount,
+        arcount,
+    }
+}
 fn main() {
     println!("Logs from your program will appear here!");
 
@@ -100,10 +137,12 @@ fn main() {
         match udp_socket.recv_from(&mut buf) {
             Ok((size, source)) => {
                 println!("Received {} bytes from {}", size, source);
+                let received_data = &buf[..size];
+                let dns_message = parse_dns_message(received_data);
                 let dns_msg = DnsMessage {
                     header: DnsHeader {
-                        id: 1234,
-                        flags: 0x8000,
+                        id: dns_message.header.id,
+                        flags: dns_message.header.flags,
                         qdcount: 1,
                         ancount: 1,
                         nscount: 0,
