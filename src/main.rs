@@ -92,15 +92,17 @@ fn encode_ip_address(ip: &str) -> [u8; 4] {
 
 fn parse_dns_message(data: &[u8]) -> DnsMessage {
     let header = parse_dns_header(&data[0..12]);
+    let labels = parse_dns_body(&data[12..]);
+
     DnsMessage {
         header,
         question: vec![DnsQuestion {
-            name: b"codecrafters.io".to_vec(),
+            name: labels.clone(),
             qtype: 1,
             class: 1,
         }],
         answers: vec![DnsAnswer {
-            name: b"codecrafters.io".to_vec(),
+            name: labels,
             atype: 1,
             class: 1,
             ttl: 3600,
@@ -120,13 +122,29 @@ fn parse_dns_header(data: &[u8]) -> DnsHeader {
 
     DnsHeader {
         id,
-        flags: flags | 1 << 15 | 4,
+        flags,
         qdcount,
         ancount,
         nscount,
         arcount,
     }
 }
+
+fn parse_dns_body(data: &[u8]) -> Vec<u8> {
+    let mut i = 0;
+    let mut labels = Vec::new();
+    while data[i] != 0 {
+        let end = data[i] as usize + i + 1;
+        labels.extend_from_slice(&data[i + 1..end]);
+        labels.push(b'.');
+        i = end;
+    }
+    if labels.last() == Some(&b'.') {
+        labels.pop();
+    }
+    labels
+}
+
 fn main() {
     println!("Logs from your program will appear here!");
 
@@ -142,25 +160,14 @@ fn main() {
                 let dns_msg = DnsMessage {
                     header: DnsHeader {
                         id: dns_message.header.id,
-                        flags: dns_message.header.flags,
+                        flags: dns_message.header.flags | 1 << 15 | 4,
                         qdcount: 1,
                         ancount: 1,
                         nscount: 0,
                         arcount: 0,
                     },
-                    question: vec![DnsQuestion {
-                        name: b"codecrafters.io".to_vec(),
-                        qtype: 1,
-                        class: 1,
-                    }],
-                    answers: vec![DnsAnswer {
-                        name: b"codecrafters.io".to_vec(),
-                        atype: 1,
-                        class: 1,
-                        ttl: 3600,
-                        rdlength: 4,
-                        rdata: encode_ip_address("8.8.8.8"),
-                    }],
+                    question: dns_message.question,
+                    answers: dns_message.answers,
                 };
 
                 let response = serialize_dns_message(dns_msg);
